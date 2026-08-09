@@ -1,0 +1,85 @@
+name: Publish release
+
+# ---------------------------------------------------------------------
+#  Runs on every push to main. Compares the version declared in
+#  skopio/__init__.py with the existing tags: if it is new, creates the
+#  tag and the GitHub release, using the matching CHANGELOG section as
+#  release notes.
+#
+#  In practice: bump __version__, write your CHANGELOG entry, push.
+#  Everything else is automatic.
+# ---------------------------------------------------------------------
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      # Daily bot commits (reports, memory) must never trigger a release.
+      - "reports/**"
+      - "state/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # needed to see the existing tags
+
+      - name: Read the declared version
+        id: version
+        run: |
+          VERSION=$(python - <<'PY'
+          import re, pathlib
+          text = pathlib.Path("skopio/__init__.py").read_text(encoding="utf-8")
+          found = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', text)
+          print(found.group(1) if found else "")
+          PY
+          )
+          if [ -z "$VERSION" ]; then
+            echo "No version found in skopio/__init__.py"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Declared version: $VERSION"
+
+      - name: Does the tag already exist?
+        id: tag
+        run: |
+          if git rev-parse "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+            echo "new=false" >> "$GITHUB_OUTPUT"
+            echo "v${{ steps.version.outputs.version }} already exists - nothing to publish."
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Extract the CHANGELOG section
+        if: steps.tag.outputs.new == 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" { inside=1; next }
+            inside && /^## / { exit }
+            inside { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "No [$VERSION] section in CHANGELOG.md." > notes.md
+          fi
+          cat notes.md
+
+      - name: Create the tag and the release
+        if: steps.tag.outputs.new == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git config user.name  "release-bot"
+          git config user.email "actions@github.com"
+          git tag -a "v$VERSION" -m "Version $VERSION"
+          git push origin "v$VERSION"
+          gh release create "v$VERSION" --title "v$VERSION" --notes-file notes.md
+          echo "Release v$VERSION published."

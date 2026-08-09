@@ -1,0 +1,67 @@
+name: Skopio daily run
+
+on:
+  schedule:
+    # NOTE: the time is in UTC.
+    #   06:23 UTC = 08:23 in Paris in summer, 07:23 in winter.
+    #
+    # The minute is deliberately not round. GitHub concentrates millions of
+    # jobs on minutes 00 and 30; under load, scheduled runs are delayed or
+    # SILENTLY DROPPED. An offset minute makes that far less likely.
+    - cron: "23 6 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Search window in days"
+        required: false
+        default: "4"
+
+permissions:
+  contents: write             # needed to rewrite state/ and reports/
+  issues: write               # only if channel "issue" is set in config.yaml
+
+concurrency:
+  group: skopio
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Skopio
+        env:
+          S2_API_KEY: ${{ secrets.S2_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SKOPIO_SMTP_HOST: ${{ secrets.SKOPIO_SMTP_HOST }}
+          SKOPIO_SMTP_PORT: ${{ secrets.SKOPIO_SMTP_PORT }}
+          SKOPIO_SMTP_USER: ${{ secrets.SKOPIO_SMTP_USER }}
+          SKOPIO_SMTP_PASSWORD: ${{ secrets.SKOPIO_SMTP_PASSWORD }}
+          SKOPIO_EMAIL_TO: ${{ secrets.SKOPIO_EMAIL_TO }}
+        run: python -m skopio.main --days ${{ github.event.inputs.days || 4 }}
+
+      - name: Archive the report in the repository
+        run: |
+          git config user.name  "skopio-bot"
+          git config user.email "actions@github.com"
+          git add reports state
+          git diff --staged --quiet || git commit -m "Skopio report $(date +%F)"
+          git push
+
+      - name: Keep the report as a downloadable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: skopio-${{ github.run_id }}
+          path: reports/
+          retention-days: 90

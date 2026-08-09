@@ -1,0 +1,52 @@
+# =====================================================================
+#  SKOPIO - technical settings
+#
+#  Your keywords are NOT here: they live in my-profile.yaml.
+#  This file is set once and rarely touched again.
+# =====================================================================
+
+window:
+  # Number of days scanned on each run.
+  # 4 rather than 1: catches up weekends, indexing latency, and a scheduled
+  # run dropped by GitHub. Combined with the memory of already-sent articles,
+  # a missed day recovers on its own.
+  days: 4
+  skip_already_seen: true
+
+sources:
+  arxiv:
+    active: true
+    # ADAPT to your field.
+    # Full list: https://arxiv.org/category_taxonomy
+    # Examples: cond-mat.mtrl-sci, physics.app-ph, q-bio.BM,
+    #           cs.LG, astro-ph.GA, math.PR
+    categories: [cond-mat.mtrl-sci, physics.app-ph]
+    max_results: 150
+  openalex:
+    active: true
+    max_results: 120
+    require_abstract: true      # without an abstract, no bullets can be built
+  crossref:
+    active: true
+    max_results: 80
+  semantic_scholar:
+    active: false               # needs an API key, otherwise a very low quota
+    max_results: 50
+
+keys:
+  # Leave empty: the real value comes from the S2_API_KEY environment
+  # variable (or the GitHub secret of the same name).
+  semantic_scholar: ""
+
+report:
+  folder: "reports"
+  formats: [html, md]
+
+delivery:
+  active: true
+  # "smtp"  : regular email (full formatting).
+  # "issue" : publishes the report as a GitHub issue; the notification goes
+  #           to your account address, with no password to manage.
+  # "smtp+issue" : both.
+  channel: "smtp"
+  send_when_empty: false
