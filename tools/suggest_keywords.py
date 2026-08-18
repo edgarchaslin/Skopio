@@ -31,8 +31,11 @@ from collections import Counter
 
 import requests
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+from skopio import __version__            # noqa: E402
+
 API = "https://api.openalex.org"
-UA = "skopio-keyword-suggestion/2.0"
+UA = f"skopio-keyword-suggestion/{__version__}"
 
 # Stop words: common English plus the boilerplate vocabulary of abstracts
 STOPWORDS = set("""

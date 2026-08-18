@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -123,7 +124,7 @@ def main() -> int:
     args = parser.parse_args()
 
     config = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
-    if args.days:
+    if args.days is not None:
         config["window"]["days"] = args.days
 
     # 1. Profile --------------------------------------------------------
@@ -156,12 +157,16 @@ def main() -> int:
             t for r in prof.rules.keywords if r.level == "critical"
             for t in r.query_terms()))
         print(f"\n{len(terms)} query terms ({len(priority)} priority)")
-        articles = sources.collect(config, terms, priority, prof.email,
-                                   config.get("keys", {}).get("semantic_scholar", ""))
+        # The key is a secret: the environment wins over config.yaml, which
+        # is committed and must therefore stay empty.
+        s2_key = (os.environ.get("S2_API_KEY", "").strip()
+                  or str(config.get("keys", {}).get("semantic_scholar", "") or ""))
+        articles = sources.collect(config, terms, priority, prof.email, s2_key)
         active_sources = [s for s, v in config["sources"].items() if v["active"]]
 
     # 3. Already reported ------------------------------------------------
     state = load_state()
+    n_collected = len(articles)          # before the already-seen filter
     if config["window"]["skip_already_seen"] and not args.demo:
         before = len(articles)
         articles = [a for a in articles if a["id"] not in state["seen"]]
@@ -178,7 +183,7 @@ def main() -> int:
 
     # 5. Report -----------------------------------------------------------
     stats = {
-        "raw": len(articles),
+        "raw": n_collected,
         "new": len(articles),
         "days": config["window"]["days"],
         "sources": active_sources,

@@ -471,9 +471,9 @@ a new version number is pushed.
 2. **When you want to publish:**
 
    ```bash
-   python tools/version.py patch   # 2.0.0 -> 2.0.1  (bug fix)
-   python tools/version.py minor   # 2.0.0 -> 2.1.0  (new capability)
-   python tools/version.py major   # 2.0.0 -> 3.0.0  (breaking change)
+   python tools/version.py patch   # 1.0.1 -> 1.0.2  (bug fix)
+   python tools/version.py minor   # 1.0.1 -> 1.1.0  (new capability)
+   python tools/version.py major   # 1.0.1 -> 2.0.0  (breaking change)
    ```
 
    The tool updates `skopio/__init__.py` and turns the `[Unreleased]` section
@@ -482,7 +482,7 @@ a new version number is pushed.
 3. **Commit and push.**
 
 4. **GitHub does the rest**: `release.yml` detects the new number, creates the
-   `v2.1.0` tag and publishes a release using the matching CHANGELOG section
+   `v1.1.0` tag and publishes a release using the matching CHANGELOG section
    as notes.
 
 As long as `__version__` is unchanged you can push freely: no release is
@@ -492,9 +492,9 @@ created. The version number is what triggers everything.
 
 | Bump | When | Example |
 |---|---|---|
-| **patch** `2.0.1` | bug fix, nothing to change for users | crash on an empty abstract |
-| **minor** `2.1.0` | new capability, existing files still work | an extra source, a new optional setting |
-| **major** `3.0.0` | users must edit `my-profile.yaml` or `config.yaml` | a renamed setting, a change in keyword syntax |
+| **patch** `1.0.2` | bug fix, nothing to change for users | crash on an empty abstract |
+| **minor** `1.1.0` | new capability, existing files still work | an extra source, a new optional setting |
+| **major** `2.0.0` | users must edit `my-profile.yaml` or `config.yaml` | a renamed setting, a change in keyword syntax |
 
 The question that decides it: does someone updating have to touch their files?
 If yes, it is a major release.

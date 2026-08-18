@@ -5,35 +5,33 @@ All notable changes to Skopio are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the numbering follows [semantic versioning](https://semver.org/):
 
-- **MAJOR** (`3.0.0`) — breaking change: you must edit your `my-profile.yaml`
+- **MAJOR** (`2.0.0`) — breaking change: you must edit your `my-profile.yaml`
   or `config.yaml` for Skopio to work again.
-- **MINOR** (`2.1.0`) — new capability, backward compatible.
-- **PATCH** (`2.0.1`) — bug fix, nothing to change on your side.
+- **MINOR** (`1.1.0`) — new capability, backward compatible.
+- **PATCH** (`1.0.1`) — bug fix, nothing to change on your side.
 
 ## [Unreleased]
 
 <!-- Record your changes here as you go. -->
 
-## [2.0.0] - 2026-08-09
+## [1.0.1] - 2026-08-18
+
+### Fixed
+- The Semantic Scholar API key is now read from the `S2_API_KEY` environment
+  variable, as the documentation always claimed. It was ignored until now, so
+  the source ran on the anonymous quota even when the secret was set.
+- Preprints and their published version are now merged again. An arXiv record
+  carries no DOI and was filed under its title while the published version was
+  filed under its DOI, so the same paper could be reported twice.
+- The report footer counted the collected references after the already-seen
+  filter: both counters showed the same number and understated the harvest.
+- `--days 0` is no longer ignored.
 
 ### Changed
-- Project renamed to **Skopio**. The Python package is now `skopio/`, the
-  tools live in `tools/`, and the profile file is `my-profile.yaml`.
-- All source code, comments, configuration keys and reports are in English.
-- Environment variables renamed to the `SKOPIO_*` prefix
-  (`SKOPIO_SMTP_HOST`, `SKOPIO_SMTP_PORT`, `SKOPIO_SMTP_USER`,
-  `SKOPIO_SMTP_PASSWORD`, `SKOPIO_EMAIL_TO`).
-- Configuration keys renamed: `window`, `sources`, `report`, `delivery`,
-  and in the profile `name`, `email`, `keywords`, `thresholds`, `volume`,
-  `weights`, `options`.
-- Keyword levels renamed to `critical`, `important`, `useful`, `context`.
-  The prefix symbols are unchanged.
-- Report sections are now labelled Must read, Relevant and Radar.
-
-### Migration from 1.x
-- Rename `mon-profil.yaml` to `my-profile.yaml` and translate its keys.
-- Recreate the GitHub secrets with the `SKOPIO_` prefix.
-- Delete `state/seen.json` or rename its `vus` key to `seen`.
+- The version number is declared once, in `skopio/__init__.py`, and the
+  User-Agent sent to the databases derives from it.
+- The daily workflow rebases before pushing the archive, so a commit landed
+  in the meantime no longer fails the job after the report has been sent.
 
 ## [1.0.0] - 2026-08-07
 

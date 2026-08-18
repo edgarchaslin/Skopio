@@ -31,6 +31,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # needed to rebase before pushing the archive
 
       - uses: actions/setup-python@v5
         with:
@@ -56,7 +58,14 @@ jobs:
           git config user.name  "skopio-bot"
           git config user.email "actions@github.com"
           git add reports state
-          git diff --staged --quiet || git commit -m "Skopio report $(date +%F)"
+          if git diff --staged --quiet; then
+            echo "Nothing new to archive."
+            exit 0
+          fi
+          git commit -m "Skopio report $(date +%F)"
+          # Rebase before pushing: a commit landed on the branch since the
+          # checkout would otherwise fail the job AFTER the report was sent.
+          git pull --rebase origin "$GITHUB_REF_NAME"
           git push
 
       - name: Keep the report as a downloadable artifact

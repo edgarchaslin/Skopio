@@ -28,7 +28,9 @@ from datetime import date, timedelta
 
 import requests
 
-USER_AGENT = "skopio/2.0 (academic literature monitoring)"
+from skopio import __version__
+
+USER_AGENT = f"skopio/{__version__} (academic literature monitoring)"
 TIMEOUT = 30
 ARXIV_DELAY = 3.0  # arXiv explicitly requires >= 3 s between requests
 
@@ -283,31 +285,53 @@ def fetch_semantic_scholar(terms: list[str], since: date, api_key: str = "",
 SOURCE_PRIORITY = {"openalex": 3, "crossref": 2, "semantic_scholar": 1, "arxiv": 0}
 
 
+def _combine(a: dict, b: dict) -> dict:
+    """
+    Merge two records of the same paper. The published version wins, but the
+    richest abstract is kept, along with the link to the arXiv preprint.
+    On a tie the record already registered wins, so `a` must be that one.
+    """
+    winner, loser = (a, b) if (
+        SOURCE_PRIORITY.get(a["source"], 0) >= SOURCE_PRIORITY.get(b["source"], 0)
+    ) else (b, a)
+    if len(loser.get("abstract", "")) > len(winner.get("abstract", "")):
+        winner["abstract"] = loser["abstract"]
+    preprint = (loser["url"] if loser["source"] == "arxiv"
+                else loser.get("preprint_url", ""))
+    if preprint and not winner.get("preprint_url"):
+        winner["preprint_url"] = preprint
+    return winner
+
+
 def deduplicate(articles: list[dict]) -> list[dict]:
     """
-    Merge on DOI, then on normalised title. On a duplicate the published
-    version wins, but the richest abstract is kept, along with a link to the
-    associated arXiv preprint.
+    Merge on DOI, then on normalised title.
+
+    Both keys are needed at once: an arXiv preprint carries no DOI and is
+    therefore filed under its title, while its published version is filed
+    under its DOI. Keying each record only once would never bring the two
+    together, and the same paper would be reported twice.
     """
     by_key: dict[str, dict] = {}
+    by_title: dict[str, str] = {}          # normalised title -> key in by_key
+
     for article in articles:
         if not article.get("title"):
             continue
-        key = (f"doi:{article['doi'].lower()}" if article.get("doi")
-               else f"t:{_normalise_title(article['title'])}")
+        title = _normalise_title(article["title"])
+        doi = (article.get("doi") or "").lower()
+        twin = by_title.get(title)
+        # no DOI: join whatever is already filed under this title
+        key = f"doi:{doi}" if doi else (twin or f"t:{title}")
+
+        # same title filed under another key: fold that record into this one
+        if twin and twin != key:
+            article = _combine(by_key.pop(twin), article)
+
         previous = by_key.get(key)
-        if previous is None:
-            by_key[key] = article
-            continue
-        winner, loser = (article, previous) if (
-            SOURCE_PRIORITY.get(article["source"], 0)
-            > SOURCE_PRIORITY.get(previous["source"], 0)
-        ) else (previous, article)
-        if len(loser.get("abstract", "")) > len(winner.get("abstract", "")):
-            winner["abstract"] = loser["abstract"]
-        if loser["source"] == "arxiv":
-            winner["preprint_url"] = loser["url"]
-        by_key[key] = winner
+        by_key[key] = _combine(previous, article) if previous else article
+        by_title[title] = key
+
     return list(by_key.values())
 
 
