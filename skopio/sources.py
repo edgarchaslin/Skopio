@@ -21,8 +21,6 @@ from __future__ import annotations
 
 import re
 import time
-import urllib.parse
-import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import date, timedelta
 
@@ -43,19 +41,29 @@ def _normalise_title(title: str) -> str:
 def _get(url: str, params: dict | None = None, headers: dict | None = None,
          attempts: int = 4):
     """
-    GET with retry on 429 / 5xx.
+    GET with retry on 429 / 5xx and on transport errors.
 
     GitHub runners share their IP addresses across thousands of jobs, so
     OpenAlex rate-limits them far more aggressively than a personal machine.
-    Without backoff, roughly half the requests of a run are lost.
+    Without backoff, roughly half the requests of a run are lost. A dropped
+    connection deserves the same treatment: it is almost always transient.
     """
     h = {"User-Agent": USER_AGENT}
     if headers:
         h.update(headers)
     response = None
     for attempt in range(attempts):
-        response = requests.get(url, params=params, headers=h, timeout=TIMEOUT)
-        if response.status_code in (429, 500, 502, 503, 504):
+        last = attempt == attempts - 1
+        try:
+            response = requests.get(url, params=params, headers=h, timeout=TIMEOUT)
+        except requests.RequestException as exc:
+            if last:
+                raise
+            wait = min(2 ** attempt * 2, 30)
+            print(f"    ({type(exc).__name__}) retrying in {wait:.0f} s")
+            time.sleep(wait)
+            continue
+        if response.status_code in (429, 500, 502, 503, 504) and not last:
             header = response.headers.get("Retry-After", "")
             wait = float(header) if header.replace(".", "").isdigit() else 0
             wait = min(max(wait, 2 ** attempt * 2), 30)
@@ -98,10 +106,11 @@ def fetch_arxiv(terms: list[str], categories: list[str], since: date,
             "sortOrder": "descending",
             "max_results": min(max_results, 100),
         }
-        url = "http://export.arxiv.org/api/query?" + urllib.parse.urlencode(params)
+        # through _get like every other source: https, identified User-Agent
+        # (arXiv asks for one) and the same retry policy
         try:
-            with urllib.request.urlopen(url, timeout=TIMEOUT) as response:
-                payload = response.read()
+            payload = _get("https://export.arxiv.org/api/query",
+                           params=params).content
         except Exception as exc:                     # noqa: BLE001
             print(f"  [arxiv] request failed: {exc}")
             time.sleep(ARXIV_DELAY)
@@ -197,6 +206,20 @@ def fetch_openalex(terms: list[str], since: date, email: str,
 
 
 # ----------------------------------------------------------------- Crossref
+def _crossref_date(item: dict) -> str:
+    """
+    Read `created.date-parts`, which Crossref documents as
+    [[year, month, day]] but also returns as [[null]], [[]] or [] whenever
+    the date is missing. Indexing it blindly used to raise an IndexError and
+    bring the whole run down over a single malformed record.
+    """
+    parts = ((item.get("created") or {}).get("date-parts") or [[]])[0] or []
+    numbers = [p for p in parts[:3] if isinstance(p, int)]
+    if not numbers:
+        return ""
+    return "-".join([str(numbers[0])] + [f"{p:02d}" for p in numbers[1:]])
+
+
 def fetch_crossref(terms: list[str], since: date, email: str,
                    max_results: int = 80) -> list[dict]:
     articles: list[dict] = []
@@ -219,16 +242,13 @@ def fetch_crossref(terms: list[str], since: date, email: str,
 
         for item in items:
             doi = (item.get("DOI") or "").lower()
-            parts = (item.get("created") or {}).get("date-parts", [[None]])[0]
-            published = "-".join(f"{p:02d}" if i else str(p)
-                                 for i, p in enumerate(parts) if p) if parts[0] else ""
             articles.append({
                 "id": f"doi:{doi}" if doi else "",
                 "title": _clean(" ".join(item.get("title") or [])),
                 "abstract": _clean(item.get("abstract") or ""),
                 "authors": [f"{a.get('given', '')} {a.get('family', '')}".strip()
                             for a in (item.get("author") or [])][:15],
-                "date": published,
+                "date": _crossref_date(item),
                 "journal": " ".join(item.get("container-title") or []),
                 "doi": doi,
                 "url": item.get("URL", ""),

@@ -36,6 +36,33 @@ def flatten(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", text.lower())
 
 
+def _plural(word: str) -> str:
+    """
+    Sub-pattern matching a word in the singular and in the plural.
+
+    Write keywords in the SINGULAR: 'analyses' cannot be reduced to
+    'analysis' without a lexicon, since 'phases' reduces to 'phase'. The
+    other direction is unambiguous and is what this handles.
+
+    Abstracts use either form, and the
+    irregular cases are exactly the ones that matter here: battery/batteries,
+    property/properties, analysis/analyses. Words of three letters or less are
+    left alone: they are acronyms (SEI, XPS) or formulas, where a trailing
+    's' means something else entirely.
+    """
+    if len(word) <= 3:
+        return re.escape(word)
+    if word.endswith("ies"):                              # batteries -> battery
+        return re.escape(word[:-3]) + "(?:y|ies)"
+    if word.endswith("is"):                               # analysis -> analyses
+        return re.escape(word[:-2]) + "[ie]s"
+    if word.endswith("s"):                                # process -> processes
+        return re.escape(word) + "(?:es)?"
+    if word.endswith("y") and word[-2] not in "aeiou":    # battery -> batteries
+        return re.escape(word[:-1]) + "(?:y|ies)"         # but alloy -> alloys
+    return re.escape(word) + "(?:es|s)?"
+
+
 def _pattern(term: str) -> re.Pattern:
     """
     Pattern for a term, tolerating English plurals and up to two inserted
@@ -47,9 +74,7 @@ def _pattern(term: str) -> re.Pattern:
     if not words:
         pattern = re.compile(r"(?!)")                    # never matches
     else:
-        parts = [re.escape(w) + (r"(?:es|s)?" if len(w) > 3 else "")
-                 for w in words]
-        body = r"\W+(?:\w+\W+){0,2}?".join(parts)
+        body = r"\W+(?:\w+\W+){0,2}?".join(_plural(w) for w in words)
         pattern = re.compile(rf"\b{body}\b")
     _CACHE[term] = pattern
     return pattern

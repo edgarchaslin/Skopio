@@ -31,11 +31,23 @@ MAX_STATE = 4000        # number of identifiers kept
 
 # ------------------------------------------------------------------ state
 def load_state() -> dict:
+    """
+    Read the memory of already reported articles.
+
+    Anything unexpected restarts from an empty memory rather than crashing:
+    the worst case is a day of duplicates, which beats a run that produces
+    no report at all.
+    """
     if STATE_FILE.exists():
         try:
-            return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+            state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             print("  [state] unreadable file, starting over")
+            return {"seen": {}}
+        if isinstance(state, dict) and isinstance(state.get("seen"), dict):
+            return state
+        print(f"  [state] no usable 'seen' entry in {STATE_FILE.name}, "
+              f"starting over (delete the file to silence this)")
     return {"seen": {}}
 
 
@@ -49,6 +61,49 @@ def save_state(state: dict, new_ids: list[str]) -> None:
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
     STATE_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=1),
                           encoding="utf-8")
+
+
+# ------------------------------------------------------------------ config
+SOURCE_NAMES = ("arxiv", "openalex", "crossref", "semantic_scholar")
+
+
+def check_config(config: dict) -> list[str]:
+    """
+    Return the list of structural problems in config.yaml. Empty means the
+    file is usable. Unlike the profile, a broken config is fatal: every
+    section is read without a default, so the run would crash mid-flight.
+    """
+    if not isinstance(config, dict):
+        return ["file is empty or is not a mapping"]
+
+    issues = [f"missing or malformed '{section}:' section"
+              for section in ("window", "sources", "report", "delivery")
+              if not isinstance(config.get(section), dict)]
+    if issues:
+        return issues
+
+    days = config["window"].get("days")
+    if not isinstance(days, int) or isinstance(days, bool) or days < 0:
+        issues.append(f"window.days must be a positive integer (got {days!r})")
+
+    for name in SOURCE_NAMES:
+        entry = config["sources"].get(name)
+        if not isinstance(entry, dict) or "active" not in entry:
+            issues.append(f"sources.{name} is missing or has no 'active:' flag")
+    if not issues and not any(config["sources"][n]["active"] for n in SOURCE_NAMES):
+        issues.append("every source is inactive: nothing would be collected")
+
+    unknown = [f for f in (config["report"].get("formats") or [])
+               if f not in ("html", "md")]
+    if unknown:
+        issues.append(f"unknown report.formats: {', '.join(map(str, unknown))}")
+
+    if config["delivery"].get("active"):
+        channel = str(config["delivery"].get("channel", ""))
+        if "smtp" not in channel and "issue" not in channel:
+            issues.append(f"delivery.channel must contain 'smtp' and/or "
+                          f"'issue' (got {channel!r})")
+    return issues
 
 
 # ------------------------------------------------------------------- demo
@@ -124,7 +179,8 @@ def main() -> int:
     args = parser.parse_args()
 
     config = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
-    if args.days is not None:
+    config_issues = check_config(config)
+    if not config_issues and args.days is not None:
         config["window"]["days"] = args.days
 
     # 1. Profile --------------------------------------------------------
@@ -137,14 +193,23 @@ def main() -> int:
     print(f"Skopio v{__version__}")
     print(f"Profile: {prof.name} <{prof.email or 'no address'}>")
     print(f"Rules  : {keywords.summarise(prof.rules)}")
+    for issue in config_issues:
+        print(f"  [!] config.yaml: {issue}")
     issues = profile_mod.check(prof)
     for issue in issues:
         print(f"  [!] {issue}")
 
     if args.check:
-        print("\nProfile is valid." if not issues
+        print("\nProfile and configuration are valid."
+              if not (issues or config_issues)
               else "\nCheck complete - see the warnings above.")
-        return 0
+        return 1 if config_issues else 0
+
+    # A broken config is not a warning: every section below is read without
+    # a default, so the run would crash halfway through.
+    if config_issues:
+        print("\n[!] fix config.yaml before running.")
+        return 1
 
     # 2. Collection -----------------------------------------------------
     if args.demo:
@@ -220,13 +285,18 @@ def main() -> int:
 
     # 7. Memory ------------------------------------------------------------
     # Articles are only marked as seen once delivered, otherwise a failed send
-    # would make them vanish for good.
-    if not args.demo:
-        if delivered:
-            save_state(state, [a["id"] for a in articles if a.get("id")])
-        else:
-            print("  [state] delivery failed - articles not marked, "
-                  "they will come back on the next run")
+    # would make them vanish for good. A --no-email run is a preview: it must
+    # leave the queue exactly as it found it, or the next real run would have
+    # nothing left to send.
+    if args.demo:
+        pass
+    elif args.no_email:
+        print("  [state] --no-email: preview run, articles not marked")
+    elif delivered:
+        save_state(state, [a["id"] for a in articles if a.get("id")])
+    else:
+        print("  [state] delivery failed - articles not marked, "
+              "they will come back on the next run")
 
     print(f"Done: {n_must_read} must read, {len(groups['relevant'])} relevant, "
           f"{len(groups['radar'])} on radar")

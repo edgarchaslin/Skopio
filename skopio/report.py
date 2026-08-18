@@ -19,6 +19,7 @@ Colour code, in order of increasing energy:
 from __future__ import annotations
 
 import html
+import re
 from datetime import date
 
 from skopio import __version__
@@ -354,6 +355,26 @@ def render_html(groups: dict[str, list[dict]], profile, stats: dict) -> str:
 
 
 # --------------------------------------------------------------- Markdown
+def _md(text: str, table: bool = False) -> str:
+    """
+    Escape what would break Markdown in a scientific title: brackets, which
+    swallow a link label ([Fe(CN)6]), and pipes inside a table cell.
+    """
+    specials = "\\[]" + ("|" if table else "")
+    out = str(text or "")
+    for character in specials:
+        out = out.replace(character, "\\" + character)
+    return out
+
+
+def _md_link(text: str, url: str, table: bool = False) -> str:
+    """A link whose URL may itself contain parentheses, as DOIs often do."""
+    target = str(url or "").strip()
+    if re.search(r"[\s()<>]", target):
+        target = "<" + target.replace(">", "%3E") + ">"
+    return f"[{_md(text, table)}]({target})"
+
+
 def render_markdown(groups: dict[str, list[dict]], profile, stats: dict) -> str:
     day = date.today().isoformat()
     lines = [f"# {profile.report_title}", "",
@@ -373,12 +394,12 @@ def render_markdown(groups: dict[str, list[dict]], profile, stats: dict) -> str:
             authors = ", ".join(article.get("authors", [])[:3])
             if len(article.get("authors", [])) > 3:
                 authors += " et al."
-            lines += [f"### {i}. {article.get('relevance', 0)}/100 — "
-                      f"[{article['title']}]({article.get('url', '')})",
+            link = _md_link(article.get("title", ""), article.get("url", ""))
+            lines += [f"### {i}. {article.get('relevance', 0)}/100 — {link}",
                       f"*{article.get('journal', '')} — {article.get('date', '')} — "
                       f"raw score {article.get('final_score', 0):.1f}*", "",
                       authors, ""]
-            lines += [f"- {b}" for b in article.get("bullets", [])]
+            lines += [f"- {_md(b)}" for b in article.get("bullets", [])]
             if article.get("tags"):
                 lines += ["", "`" + "` `".join(article["tags"]) + "`"]
             lines += ["", "---", ""]
@@ -387,10 +408,11 @@ def render_markdown(groups: dict[str, list[dict]], profile, stats: dict) -> str:
         lines += [f"## Radar ({len(groups['radar'])})", "",
                   "| Score | Article | Source |", "|---:|---|---|"]
         for article in groups["radar"]:
-            safe_title = article["title"].replace("|", "\\|")
-            lines.append(f"| {article.get('relevance', 0)} | "
-                         f"[{safe_title}]({article.get('url', '')}) "
-                         f"| {article.get('journal') or article.get('source', '')} |")
+            link = _md_link(article.get("title", ""), article.get("url", ""),
+                            table=True)
+            source = article.get("journal") or article.get("source", "")
+            lines.append(f"| {article.get('relevance', 0)} | {link} "
+                         f"| {_md(source, table=True)} |")
         lines.append("")
 
     return "\n".join(lines)

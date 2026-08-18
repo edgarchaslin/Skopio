@@ -300,10 +300,15 @@ are not actually about it.
 ### What you do not need to write
 
 Skopio already ignores accents, subscripts (`CO₂` = `CO2`), hyphens and
-English plurals (`loss` matches `losses`). It also tolerates up to two
+English plurals, including the irregular ones (`battery` matches
+`batteries`, `analysis` matches `analyses`). It also tolerates up to two
 inserted words: `ionic conductivity` matches `ionic charge conductivities`.
 
 **Write in English**: that is the language of the queried databases.
+
+**Write in the singular**: `battery` finds `batteries`, but `batteries`
+does not find `battery` — no rule can tell `analyses` → `analysis` from
+`phases` → `phase` without a dictionary.
 
 ### How many lines?
 

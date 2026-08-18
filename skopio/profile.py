@@ -28,6 +28,8 @@ DEFAULT_OPTIONS = {
     "recency_bonus": 1.5,
     "no_abstract_penalty": -2.0,
     "minimum_score": 3.0,
+    "must_read_floor": 12.0,     # auto thresholds only
+    "relevant_floor": 6.0,
 }
 
 
@@ -93,6 +95,9 @@ def check(profile: Profile) -> list[str]:
 
     if not [r for r in profile.rules.keywords if r.queried]:
         issues.append("no !! or !!! keyword: no query will be sent")
+    elif not [r for r in profile.rules.keywords if r.level == "critical"]:
+        issues.append("no !!! keyword: Crossref and Semantic Scholar are only "
+                      "given the critical terms and will return nothing")
     if len(profile.rules.keywords) < 5:
         issues.append("fewer than 5 keywords: results will be very thin")
     if not profile.rules.exclusions:

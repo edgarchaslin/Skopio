@@ -40,7 +40,9 @@ report_title: "Skopio"
 #        -> ignores articles merely name-dropping the word
 #
 #  No need to multiply variants: Skopio already ignores accents,
-#  subscripts (CO₂ = CO2), hyphens and English plurals.
+#  subscripts (CO₂ = CO2), hyphens and English plurals — including the
+#  irregular ones (battery/batteries, analysis/analyses).
+#  WRITE IN THE SINGULAR: "battery" finds "batteries", not the reverse.
 #  WRITE IN ENGLISH: that is the language of the queried databases.
 #
 #  How many lines? 25 to 60. Below 15 the report will be thin,

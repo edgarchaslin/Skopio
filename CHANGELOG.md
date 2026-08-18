@@ -14,6 +14,29 @@ and the numbering follows [semantic versioning](https://semver.org/):
 
 <!-- Record your changes here as you go. -->
 
+## [1.0.2] - 2026-08-18
+
+### Fixed
+- `--no-email` no longer consumes the queue: a preview run used to leave the
+  next real run with nothing left to send.
+- A malformed Crossref date no longer brings the whole run down.
+- Irregular English plurals are matched (`battery`/`batteries`,
+  `analysis`/`analyses`). Write keywords in the singular.
+- A `state/seen.json` without a `seen` entry restarts cleanly instead of
+  raising `KeyError`.
+- Brackets in titles and parentheses in URLs no longer break the Markdown
+  report.
+- `--check` warns when a profile has no `!!!` keyword, which leaves Crossref
+  and Semantic Scholar with nothing to query.
+
+### Changed
+- `config.yaml` is validated at startup: a broken section stops the run with
+  an explicit message instead of an error halfway through.
+- arXiv is queried over HTTPS through the shared HTTP helper, so it gets the
+  identified User-Agent it asks for and the same retry policy as the others.
+- Network errors are retried like HTTP 429 and 5xx.
+- `must_read_floor` and `relevant_floor` are declared in the default options.
+
 ## [1.0.1] - 2026-08-18
 
 ### Fixed
